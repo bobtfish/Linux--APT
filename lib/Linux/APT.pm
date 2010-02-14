@@ -3,6 +3,8 @@ package Linux::APT;
 use strict;
 use warnings;
 
+use Linux::APT::CmdRunner;
+
 our $VERSION = '0.02';
 
 =head1 NAME
@@ -103,6 +105,9 @@ sub new
   chomp($self->{aptcache});
   die qq(apt-cache doesn't appear to be available.\n) unless $self->{aptcache};
 
+  my $cmdrunner_class = $args{cmdrunner} || 'Linux::APT::CmdRunner';
+  $self->{cmdrunner} = $cmdrunner_class->new($args{cmdrunner_args}||{});;
+
   return bless($self, $class);
 }
 
@@ -149,11 +154,7 @@ sub update
   my $self = shift;
   my $update = {};
 
-  if (open(APT, "$self->{aptget} -q update 2>&1 |"))
-  {
-    while (my $line = <APT>)
-    {
-      chomp($line);
+  foreach my $line (split /\n/, $self->{cmdrunner}->run_cmd($self->{aptget}, '-q', 'update')) {
       print qq($line\n) if $self->{debug};
       if ($line =~ m#Fetched (\d+\S+) in (.*?) \((\d+\S+?)\)#i)
       {
@@ -173,12 +174,6 @@ sub update
         $error->{message} = $line;
         push(@{$update->{error}}, $error);
       }
-    }
-    close(APT);
-  }
-  else
-  {
-    die "Couldn't use APT: $!\n";
   }
 
   return $update;
@@ -227,11 +222,9 @@ sub toupgrade
   my $self = shift;
   my $updates = {};
 
-  if (open(APT, "echo n | $self->{aptget} -q -V upgrade 2>&1 |"))
+  foreach my $line (split /\n/, $self->{cmdrunner}->run_cmd($self->{aptget},
+                                    qw/-q -V upgrade/ ))
   {
-    while (my $line = <APT>)
-    {
-      chomp($line);
       print qq($line\n) if $self->{debug};
       if ($line =~ m#^\s+(\S+)\s+\((\S+)\s+=>\s+(\S+)\)#)
       {
@@ -253,8 +246,6 @@ sub toupgrade
         $error->{message} = $line;
         push(@{$updates->{error}}, $error);
       }
-    }
-    close(APT);
   }
 
   return $updates;
@@ -307,13 +298,11 @@ sub search
 
   foreach my $pkg (@args) 
   {
-    if (open(APT, "$self->{'aptcache'} search '$pkg' 2>&1 |")) 
+    foreach my $line (split /\n/, $self->{cmdrunner}->run_cmd($self->{aptcache},
+                                    'search', $pkg ))
     {
-      while (my $line = <APT>) 
-      {
         my $okay = 0;
         $okay = 1 if (grep(m/all/, @{$opts->{in}}));
-        chomp($line);
         print qq($line\n) if $self->{'debug'};
         if ($line =~ m/^(\S+)\s+-\s+(.*)$/) 
         {
@@ -326,8 +315,6 @@ sub search
         }
       }
     }
-    close(APT);
-  }
 
   return $search;
 }
@@ -450,12 +437,9 @@ sub install
   my $state = '';
   my $notreally = ($noop ? 'echo n |' : '');
   my $justsayyes = ($noop ? '-s' : "-y $force");
-
-  if (open(APT, "$notreally $self->{aptget} $justsayyes -q -V $action $packages 2>&1 |"))
+  foreach my $line (split /\n/, $self->{cmdrunner}->run_cmd($notreally,
+                        $self->{aptget}, "$justsayyes -q -V $action $packages"))
   {
-    while (my $line = <APT>)
-    {
-      chomp($line);
       print qq($line\n) if $self->{debug};
       if ($line =~ m/The following packages will be REMOVED:/i)
       {
@@ -516,26 +500,20 @@ sub install
         $error->{message} = $line;
         push(@{$installed->{error}}, $error);
       }
-    }
-    close(APT);
   }
 
   unless ($noop)
   {
     foreach my $package (keys(%{$installed->{packages}}))
     {
-      if (open(APT, "$self->{aptcache} showpkg $package |"))
+      foreach my $line (split /\n/, $self->{cmdrunner}->run_cmd(
+                                    $self->{aptcache}, 'showpkg', $package))
       {
-        while (my $line = <APT>)
-        {
-          chomp($line);
           print qq($line\n) if $self->{debug};
           if ($line =~ m#^(\S+)\s+.*?\(/var/lib/dpkg/status\)#)
           {
             $installed->{packages}->{$package}->{current} = $1;
           }
-        }
-        close(APT);
       }
     }
   }
