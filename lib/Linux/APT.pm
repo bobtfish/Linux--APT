@@ -404,7 +404,7 @@ sub install
   my $action = 'install';
   my $force = '';
   my $noop = 0;
-  my $packages = '';
+  my @packages;
   my $installed = {};
 
   foreach my $install (@install)
@@ -431,14 +431,15 @@ sub install
     }
 
     (my $package = $install) =~ s/[^a-z0-9\+\-_\.]//ig;
-    $packages .= $package.' ';
+    push(@packages, $package);
   }
 
   my $state = '';
+# FIXME
   my $notreally = ($noop ? 'echo n |' : '');
-  my $justsayyes = ($noop ? '-s' : "-y $force");
-  foreach my $line (split /\n/, $self->{cmdrunner}->run_cmd($notreally,
-                        $self->{aptget}, "$justsayyes -q -V $action $packages"))
+  my @justsayyes = ($noop ? '-s' : ("-y", $force));
+  foreach my $line (split /\n/, $self->{cmdrunner}->run_cmd(grep { length $_ } #$notreally,
+                        $self->{aptget}, @justsayyes, '-q', '-V', $action, @packages))
   {
       print qq($line\n) if $self->{debug};
       if ($line =~ m/The following packages will be REMOVED:/i)
