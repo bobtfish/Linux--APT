@@ -15,7 +15,7 @@ sub run_cmd {
     my ($self, @cmd) = @_;
     use Data::Dumper;
     warn Dumper(\@cmd);
-    my $isc = IPC::ShellCmd->new([@cmd], -debug => 3)
+    my $isc = IPC::ShellCmd->new([@cmd])
             ->stdin(-filename => "/dev/null");
 
     if ($self->{sudo}) {
